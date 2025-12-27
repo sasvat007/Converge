@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Resume → JSON Parser</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      background: #f5f5f5;
+      padding: 20px;
+    }
+    textarea, pre {
+      width: 100%;
+      min-height: 200px;
+      margin-top: 10px;
+      padding: 10px;
+      font-family: monospace;
+    }
+    button {
+      padding: 10px 15px;
+      margin-top: 10px;
+      cursor: pointer;
+    }
+  </style>
+</head>
+<body>
+
+  <h2>Upload Resume (PDF)</h2>
+  <input type="file" id="pdfInput" accept="application/pdf">
+
+  <button onclick="convertPdf()">Extract Text</button>
+
+  <h3>Extracted Resume Text</h3>
+  <textarea id="resumeText"></textarea>
+
+  <button onclick="sendToBackend()">Convert to JSON</button>
+
+  <h3>Parsed Resume JSON</h3>
+  <pre id="jsonOutput">{}</pre>
+
+  <script src="script.js"></script>
+</body>
+</html>
