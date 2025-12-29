@@ -1,44 +1,35 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <title>Resume → JSON Parser</title>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+  <meta charset="UTF-8" />
+  <title>Resume PDF Parser</title>
 
-  <style>
-    body {
-      font-family: Arial, sans-serif;
-      background: #f5f5f5;
-      padding: 20px;
-    }
-    textarea, pre {
-      width: 100%;
-      min-height: 200px;
-      margin-top: 10px;
-      padding: 10px;
-      font-family: monospace;
-    }
-    button {
-      padding: 10px 15px;
-      margin-top: 10px;
-      cursor: pointer;
-    }
-  </style>
+  <!-- PDF.js -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.min.js"></script>
+
+  <link rel="stylesheet" href="style.css" />
 </head>
+
 <body>
 
-  <h2>Upload Resume (PDF)</h2>
-  <input type="file" id="pdfInput" accept="application/pdf">
+  <h1>Resume PDF → JSON Parser</h1>
 
-  <button onclick="convertPdf()">Extract Text</button>
+  <div class="container">
+    <input type="file" id="pdfInput" accept="application/pdf" />
 
-  <h3>Extracted Resume Text</h3>
-  <textarea id="resumeText"></textarea>
+    <div class="buttons">
+      <button onclick="convertPdf()">Convert PDF</button>
+      <button onclick="sendToBackend()">Send to Backend</button>
+    </div>
 
-  <button onclick="sendToBackend()">Convert to JSON</button>
+    <div id="spinner" class="spinner hidden"></div>
 
-  <h3>Parsed Resume JSON</h3>
-  <pre id="jsonOutput">{}</pre>
+    <h3>Extracted Resume Text</h3>
+    <textarea id="resumeText" placeholder="Resume text will appear here..."></textarea>
+
+    <h3>Parsed JSON Output</h3>
+    <pre id="jsonOutput">Waiting for response...</pre>
+  </div>
 
   <script src="script.js"></script>
 </body>
