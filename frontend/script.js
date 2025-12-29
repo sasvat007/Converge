@@ -1,9 +1,23 @@
+const pdfjsLib = window['pdfjs-dist/build/pdf'];
+pdfjsLib.GlobalWorkerOptions.workerSrc =
+  'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.worker.min.js';
+
+function showSpinner() {
+  document.getElementById("spinner").classList.remove("hidden");
+}
+
+function hideSpinner() {
+  document.getElementById("spinner").classList.add("hidden");
+}
+
 async function convertPdf() {
   const file = document.getElementById("pdfInput").files[0];
   if (!file) {
     alert("Please upload a PDF");
     return;
   }
+
+  showSpinner();
 
   const reader = new FileReader();
   reader.onload = async function () {
@@ -20,6 +34,7 @@ async function convertPdf() {
     }
 
     document.getElementById("resumeText").value = fullText;
+    hideSpinner();
   };
 
   reader.readAsArrayBuffer(file);
@@ -32,20 +47,29 @@ async function sendToBackend() {
     return;
   }
 
-  const response = await fetch("http://localhost:8080/api/parse", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json"
-    },
-    body: JSON.stringify({ resumeText })
-  });
+  showSpinner();
+  document.getElementById("jsonOutput").textContent = "Processing...";
 
-  const data = await response.json();
+  try {
+    const response = await fetch("http://localhost:8080/api/parse", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({ resumeText })
+    });
 
-  if (data.success) {
-    document.getElementById("jsonOutput").textContent =
-      JSON.stringify(JSON.parse(data.reply), null, 2);
-  } else {
-    document.getElementById("jsonOutput").textContent = "Parsing failed";
+    const data = await response.json();
+
+    if (data.success) {
+      document.getElementById("jsonOutput").textContent =
+        JSON.stringify(JSON.parse(data.reply), null, 2);
+    } else {
+      document.getElementById("jsonOutput").textContent = "Parsing failed";
+    }
+  } catch (err) {
+    document.getElementById("jsonOutput").textContent = "Backend error";
+  } finally {
+    hideSpinner();
   }
 }

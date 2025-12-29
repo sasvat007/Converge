@@ -1,14 +1,22 @@
 package sasvar.example.chatbot.Service;
 
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.*;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestTemplate;
+import sasvar.example.chatbot.JsonData;
+import sasvar.example.chatbot.Repository.JsonDataRepository;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 
+import java.time.Instant;
+
 @Service
 public class ChatBotService {
+
+    @Autowired
+    private JsonDataRepository jsonDataRepository;
 
     @Value("${gemini.api.key}")
     private String apiKey;
@@ -178,5 +186,17 @@ Resume Text:
         } catch (Exception e) {
             throw new RuntimeException("Error parsing Gemini response", e);
         }
+    }
+
+    public JsonData saveJson(String json) {
+        JsonData data = new JsonData();
+        data.setProfileJson(json);
+        data.setCreatedAt(Instant.now().toString());
+        return jsonDataRepository.save(data);
+    }
+
+    public JsonData getById(Long id) {
+        return jsonDataRepository.findById(id)
+                .orElseThrow(() -> new RuntimeException("Profile not found"));
     }
 }
