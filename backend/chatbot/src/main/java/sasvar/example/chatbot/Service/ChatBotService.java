@@ -46,7 +46,7 @@ Rules:
 - Return ONLY valid minified JSON.
 - Do NOT include explanations, markdown, or extra text.
 
-SON Schema:
+JSON Schema:
 {
   "profile": {
     "user_id": "",
@@ -199,4 +199,31 @@ Resume Text:
         return jsonDataRepository.findById(id)
                 .orElseThrow(() -> new RuntimeException("Profile not found"));
     }
+
+    public void sendjsontodjango(Long id){
+        JsonData data = getById(id);
+        String resumejson=data.getProfileJson(); //from table getting the json
+        try {
+            HttpHeaders headers = new HttpHeaders();
+            headers.setContentType(MediaType.APPLICATION_JSON);
+
+            HttpEntity<String> request =
+                    new HttpEntity<>(resumejson, headers);
+
+            // 3️⃣ Send to Django ML service
+            RestTemplate restTemplate = new RestTemplate();
+
+            ResponseEntity<String> response =
+                    restTemplate.postForEntity(
+                            "http://localhost:8000/api/process-resume/",
+                            request,
+                            String.class
+                    );
+        }catch (Exception e){
+        // 4️⃣ Log Django response (for now)
+        System.out.println("ML Service not running");
+        }
+
+    }
+
 }
