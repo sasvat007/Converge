@@ -51,4 +51,11 @@ public class ChatBotController {
     public String getStoredProfile(@PathVariable Long id) {
         return chatBotService.getById(id).getProfileJson();
     }
+
+    @PostMapping("/send-to-ml/{id}")
+    public String sendResumeToML(@PathVariable Long id) {
+        chatBotService.sendjsontodjango(id);
+        return "Resume " + id + " sent to ML service";
+    }
+
 }
