@@ -40,6 +40,7 @@ public class ProjectController {
             Object reqSkillsObj = body.get("requiredSkills");
             String githubRepo = body.getOrDefault("githubRepo", "").toString();
             String description = body.get("description") == null ? "" : body.get("description").toString();
+            String domain = body.getOrDefault("domain", "").toString(); // new: read domain
 
             // basic validation
             if (title == null || title.isBlank()
@@ -63,7 +64,7 @@ public class ProjectController {
             }
 
             ProjectData saved = projectService.createProject(
-                    title, type, visibility, requiredSkillsCsv, githubRepo, description
+                    title, type, visibility, requiredSkillsCsv, githubRepo, description, domain // pass domain
             );
 
             // return created project to frontend (include owner's email)
@@ -75,6 +76,7 @@ public class ProjectController {
             resp.put("requiredSkills", saved.getRequiredSkills());
             resp.put("githubRepo", saved.getGithubRepo());
             resp.put("description", saved.getDescription());
+            resp.put("domain", saved.getDomain()); // include domain
             resp.put("createdAt", saved.getCreatedAt());
             resp.put("email", saved.getEmail()); // <-- owner email included
 
@@ -105,6 +107,7 @@ public class ProjectController {
                 m.put("requiredSkills", p.getRequiredSkills());
                 m.put("githubRepo", p.getGithubRepo());
                 m.put("description", p.getDescription());
+                m.put("domain", p.getDomain()); // include domain
                 m.put("createdAt", p.getCreatedAt());
                 m.put("email", p.getEmail()); // <-- include owner email here too
                 return m;
@@ -134,6 +137,7 @@ public class ProjectController {
                 m.put("requiredSkills", p.getRequiredSkills());
                 m.put("githubRepo", p.getGithubRepo());
                 m.put("description", p.getDescription());
+                m.put("domain", p.getDomain()); // include domain
                 m.put("createdAt", p.getCreatedAt());
                 m.put("email", p.getEmail()); // owner email
                 return m;

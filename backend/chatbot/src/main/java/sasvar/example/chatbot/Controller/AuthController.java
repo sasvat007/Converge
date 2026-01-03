@@ -80,6 +80,12 @@ public class AuthController {
                     .body(Map.of("message", "Failed to parse and save resume during registration"));
         }
 
+        // Best-effort: send parsed resume JSON to Django ML service (do not fail registration if this fails)
+        try {
+            chatBotService.sendResumeJson(savedProfile);
+        } catch (Exception ignored) {
+        }
+
         String token = jwtUtils.generateToken(user.getEmail());
 
         Map<String, Object> resp = new HashMap<>();

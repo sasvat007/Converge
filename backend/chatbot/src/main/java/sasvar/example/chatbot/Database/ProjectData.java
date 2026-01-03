@@ -37,6 +37,14 @@ public class ProjectData {
     @Column(columnDefinition = "TEXT")
     private String description;
 
+    // domain stored as comma-separated list
+    @Column(name = "domain")
+    private String domain;
+
+    // new: preferred technologies stored as comma-separated list
+    @Column(name = "preferred_technologies")
+    private String preferredTechnologies;
+
     // owner email (link to User)
     @Column(nullable = false)
     private String email;

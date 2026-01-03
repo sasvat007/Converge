@@ -15,12 +15,16 @@ public class ProjectService {
     @Autowired
     private ProjectRepository projectRepository;
 
+    @Autowired
+    private ChatBotService chatBotService; // injected to send to Django
+
     public ProjectData createProject(String title,
                                      String type,
                                      String visibility,
                                      String requiredSkillsCsv,
                                      String githubRepo,
-                                     String description) {
+                                     String description,
+                                     String domain) { // added domain param
 
         var auth = SecurityContextHolder.getContext().getAuthentication();
         if (auth == null || auth.getName() == null) {
@@ -35,10 +39,20 @@ public class ProjectService {
         project.setRequiredSkills(requiredSkillsCsv);
         project.setGithubRepo(githubRepo);
         project.setDescription(description);
+        project.setDomain(domain); // persist domain
         project.setEmail(email);
         project.setCreatedAt(Instant.now().toString());
 
-        return projectRepository.save(project);
+        ProjectData saved = projectRepository.save(project);
+
+        // Best-effort: send project JSON and owner's resume JSON to Django ML
+        try {
+            chatBotService.sendProjectAndOwnerResume(saved);
+        } catch (Exception e) {
+            System.out.println("Failed to send project/resume to Django ML: " + e.getMessage());
+        }
+
+        return saved;
     }
 
     public List<ProjectData> listProjectsForCurrentUser() {
