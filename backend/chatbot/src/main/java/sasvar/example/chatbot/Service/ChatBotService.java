@@ -3,15 +3,17 @@ package sasvar.example.chatbot.Service;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.*;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestTemplate;
 import sasvar.example.chatbot.Database.JsonData;
 import sasvar.example.chatbot.Exception.ProfileNotFoundException;
 import sasvar.example.chatbot.Repository.JsonDataRepository;
-import tools.jackson.databind.JsonNode;
-import tools.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 
 import java.time.Instant;
+import java.util.Optional;
 
 @Service
 public class ChatBotService {
@@ -189,16 +191,177 @@ Resume Text:
         }
     }
 
-    public JsonData saveJson(String json) {
-        JsonData data = new JsonData();
-        data.setProfileJson(json);
-        data.setCreatedAt(Instant.now().toString());
-        return jsonDataRepository.save(data);
+
+    public JsonData saveJson(String json,
+                             String providedName,
+                             String providedYear,
+                             String providedDepartment,
+                             String providedInstitution,
+                             String providedAvailability) {
+
+        // 1️⃣ Get authentication from Spring Security
+        var auth = SecurityContextHolder.getContext().getAuthentication();
+
+        if (auth == null || auth.getName() == null) {
+            throw new RuntimeException("User not authenticated — email is null");
+        }
+
+        String email = auth.getName();
+
+        // 2️⃣ Check if resume/profile already exists for this user
+        JsonData profile = jsonDataRepository.findByEmail(email)
+                .orElse(new JsonData());
+
+        // 3️⃣ Set required fields (keep existing profile fields if present)
+        profile.setEmail(email);                // ensure link to user
+        profile.setProfileJson(json);
+        profile.setCreatedAt(Instant.now().toString());
+
+        // 3.1️⃣ If user provided top-level profile fields, prefer those.
+        if (providedName != null && !providedName.isBlank()) {
+            profile.setName(providedName);
+        }
+        if (providedYear != null && !providedYear.isBlank()) {
+            profile.setYear(providedYear);
+        }
+        if (providedDepartment != null && !providedDepartment.isBlank()) {
+            profile.setDepartment(providedDepartment);
+        }
+        if (providedInstitution != null && !providedInstitution.isBlank()) {
+            profile.setInstitution(providedInstitution);
+        }
+        if (providedAvailability != null && !providedAvailability.isBlank()) {
+            profile.setAvailability(providedAvailability);
+        }
+
+        // 3.2️⃣ For any fields NOT provided by user, try to extract from parsed JSON
+        try {
+            ObjectMapper mapper = new ObjectMapper();
+            JsonNode root = mapper.readTree(json);
+            JsonNode profileNode = root.path("profile");
+            if (!profileNode.isMissingNode()) {
+                if ((profile.getName() == null || profile.getName().isBlank())
+                        && profileNode.hasNonNull("name")) {
+                    profile.setName(profileNode.get("name").asText());
+                }
+                if ((profile.getYear() == null || profile.getYear().isBlank())
+                        && profileNode.hasNonNull("year")) {
+                    profile.setYear(profileNode.get("year").asText());
+                }
+                if ((profile.getDepartment() == null || profile.getDepartment().isBlank())
+                        && profileNode.hasNonNull("department")) {
+                    profile.setDepartment(profileNode.get("department").asText());
+                }
+                if ((profile.getInstitution() == null || profile.getInstitution().isBlank())
+                        && profileNode.hasNonNull("institution")) {
+                    profile.setInstitution(profileNode.get("institution").asText());
+                }
+                if ((profile.getAvailability() == null || profile.getAvailability().isBlank())
+                        && profileNode.hasNonNull("availability")) {
+                    profile.setAvailability(profileNode.get("availability").asText());
+                }
+            }
+        } catch (Exception e) {
+            // ignore extraction errors; JSON still saved
+            e.printStackTrace();
+        }
+
+        // 4️⃣ Save to DB
+        return jsonDataRepository.save(profile);
+    }
+
+    // New: save parsed JSON and profile fields for a specific email (used during registration)
+    public JsonData saveJsonForEmail(String json,
+                                    String email,
+                                    String providedName,
+                                    String providedYear,
+                                    String providedDepartment,
+                                    String providedInstitution,
+                                    String providedAvailability) {
+
+        // Use provided email (no SecurityContext required)
+        if (email == null || email.isBlank()) {
+            throw new RuntimeException("Email required to save profile");
+        }
+
+        JsonData profile = jsonDataRepository.findByEmail(email)
+                .orElse(new JsonData());
+
+        profile.setEmail(email);
+        profile.setProfileJson(json);
+        profile.setCreatedAt(Instant.now().toString());
+
+        if (providedName != null && !providedName.isBlank()) {
+            profile.setName(providedName);
+        }
+        if (providedYear != null && !providedYear.isBlank()) {
+            profile.setYear(providedYear);
+        }
+        if (providedDepartment != null && !providedDepartment.isBlank()) {
+            profile.setDepartment(providedDepartment);
+        }
+        if (providedInstitution != null && !providedInstitution.isBlank()) {
+            profile.setInstitution(providedInstitution);
+        }
+        if (providedAvailability != null && !providedAvailability.isBlank()) {
+            profile.setAvailability(providedAvailability);
+        }
+
+        // For any missing fields, try to extract from parsed JSON
+        try {
+            ObjectMapper mapper = new ObjectMapper();
+            JsonNode root = mapper.readTree(json);
+            JsonNode profileNode = root.path("profile");
+            if (!profileNode.isMissingNode()) {
+                if ((profile.getName() == null || profile.getName().isBlank())
+                        && profileNode.hasNonNull("name")) {
+                    profile.setName(profileNode.get("name").asText());
+                }
+                if ((profile.getYear() == null || profile.getYear().isBlank())
+                        && profileNode.hasNonNull("year")) {
+                    profile.setYear(profileNode.get("year").asText());
+                }
+                if ((profile.getDepartment() == null || profile.getDepartment().isBlank())
+                        && profileNode.hasNonNull("department")) {
+                    profile.setDepartment(profileNode.get("department").asText());
+                }
+                if ((profile.getInstitution() == null || profile.getInstitution().isBlank())
+                        && profileNode.hasNonNull("institution")) {
+                    profile.setInstitution(profileNode.get("institution").asText());
+                }
+                if ((profile.getAvailability() == null || profile.getAvailability().isBlank())
+                        && profileNode.hasNonNull("availability")) {
+                    profile.setAvailability(profileNode.get("availability").asText());
+                }
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+
+        return jsonDataRepository.save(profile);
+    }
+
+    // New helper: fetch profile by email (used after login)
+    public JsonData getProfileByEmail(String email) {
+        if (email == null) return null;
+        Optional<JsonData> opt = jsonDataRepository.findByEmail(email);
+        return opt.orElse(null);
     }
 
     public JsonData getById(Long id) {
         return jsonDataRepository.findById(id)
                 .orElseThrow(() -> new ProfileNotFoundException(id));
+    }
+
+    // New helper: get profile for currently authenticated user
+    public JsonData getProfileForCurrentUser() {
+        var auth = SecurityContextHolder.getContext().getAuthentication();
+        if (auth == null || auth.getName() == null) {
+            throw new RuntimeException("User not authenticated — email is null");
+        }
+        String email = auth.getName();
+        return jsonDataRepository.findByEmail(email)
+                .orElseThrow(() -> new ProfileNotFoundException(-1L));
     }
 
     public void sendjsontodjango(Long id){
