@@ -351,6 +351,26 @@ public class ProjectController {
         }
     }
 
+    // Mark project as completed and delete from DB (owner only)
+    @PostMapping("/{id}/complete")
+    public ResponseEntity<?> completeProject(@PathVariable("id") String projectIdStr) {
+        Long projectId = parseId(projectIdStr);
+        if (projectId == null) {
+            return ResponseEntity.badRequest().body(Map.of("message", "Invalid project id"));
+        }
+
+        try {
+            projectService.deleteProjectAsCompleted(projectId);
+            return ResponseEntity.ok(Map.of("message", "Project marked as completed and removed"));
+        } catch (RuntimeException e) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).body(Map.of("message", e.getMessage()));
+        } catch (Exception e) {
+            e.printStackTrace();
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                    .body(Map.of("message", "Failed to complete project"));
+        }
+    }
+
     // helper to parse path variable id strings to Long; returns null when invalid
     private Long parseId(String idStr) {
         if (idStr == null) return null;

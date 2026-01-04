@@ -198,17 +198,19 @@ public class ProjectTeamService {
         // For each row, fetch JsonData by email and map to minimal profile
         return rows.stream().map(r -> {
             Map<String, Object> m = new HashMap<>();
-            m.put("email", r.getMemberEmail());
             // try to find profile
             Optional<JsonData> opt = jsonDataRepository.findByEmail(r.getMemberEmail());
             if (opt.isPresent()) {
                 JsonData p = opt.get();
+                m.put("id", p.getId());              // ✅ ADD: teammate's JsonData.id
+                m.put("email", p.getEmail());
                 m.put("name", p.getName());
                 m.put("year", p.getYear());
                 m.put("department", p.getDepartment());
                 m.put("institution", p.getInstitution());
                 m.put("availability", p.getAvailability());
             } else {
+                m.put("email", r.getMemberEmail());
                 m.put("name", null);
             }
             m.put("addedAt", r.getAddedAt());

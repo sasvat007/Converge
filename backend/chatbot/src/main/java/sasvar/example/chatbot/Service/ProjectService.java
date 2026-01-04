@@ -108,4 +108,22 @@ public class ProjectService {
         if (id == null) return null;
         return projectRepository.findById(id).orElse(null);
     }
+
+    // NEW: delete project (owner only) — used when marking as completed
+    public void deleteProjectAsCompleted(Long projectId) {
+        var auth = SecurityContextHolder.getContext().getAuthentication();
+        if (auth == null || auth.getName() == null) {
+            throw new RuntimeException("User not authenticated");
+        }
+        String email = auth.getName();
+
+        ProjectData project = projectRepository.findById(projectId)
+                .orElseThrow(() -> new RuntimeException("Project not found"));
+
+        if (!email.equals(project.getEmail())) {
+            throw new RuntimeException("Only project owner can mark as completed");
+        }
+
+        projectRepository.delete(project);
+    }
 }

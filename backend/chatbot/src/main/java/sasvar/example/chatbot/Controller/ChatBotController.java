@@ -82,6 +82,7 @@ public class ChatBotController {
         try {
             JsonData data = chatBotService.getProfileForCurrentUser();
             Map<String, Object> profile = new HashMap<>();
+            profile.put("id", data.getId());                           // ✅ ADD: user's JsonData.id
             profile.put("email", data.getEmail());
             profile.put("name", data.getName());
             profile.put("year", data.getYear());
