@@ -1,486 +1,252 @@
 package sasvar.example.chatbot.Service;
 
-import org.springframework.beans.factory.annotation.Autowired;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.*;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestTemplate;
 import sasvar.example.chatbot.Database.JsonData;
+import sasvar.example.chatbot.Database.ProjectData;
 import sasvar.example.chatbot.Exception.ProfileNotFoundException;
 import sasvar.example.chatbot.Repository.JsonDataRepository;
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import sasvar.example.chatbot.Database.ProjectData;
 
 import java.time.Instant;
-import java.util.Optional;
-import java.util.Map;
-import java.util.List;
-import java.util.Arrays;
+import java.util.*;
 import java.util.stream.Collectors;
-import java.util.HashMap;
 
 @Service
 public class ChatBotService {
 
-    @Autowired
-    private JsonDataRepository jsonDataRepository;
+    private static final Logger log = LoggerFactory.getLogger(ChatBotService.class);
+
+    private final JsonDataRepository jsonDataRepository;
+    private final ObjectMapper mapper = new ObjectMapper();
 
     @Value("${gemini.api.key}")
     private String apiKey;
 
-    // ✅ Stable & recommended
-    private static final String GEMMA_URL =
-            "https://generativelanguage.googleapis.com/v1beta/models/" +
-                    "gemini-2.5-flash:generateContent?key=%s";
+    private static final String GEMMA_URL = "https://generativelanguage.googleapis.com/v1beta/models/"
+            + "gemini-2.5-flash:generateContent?key=%s";
 
+    public ChatBotService(JsonDataRepository jsonDataRepository) {
+        this.jsonDataRepository = jsonDataRepository;
+    }
+
+    /* ------------------------------------------------------------------ */
+    /* Resume → JSON via Gemini */
+    /* ------------------------------------------------------------------ */
 
     public String convertJSON(String resumeText) {
-
         RestTemplate restTemplate = new RestTemplate();
 
         HttpHeaders headers = new HttpHeaders();
         headers.setContentType(MediaType.APPLICATION_JSON);
 
-        // ✅ Improved prompt (allows inference)
         String prompt = """
-You are an AI resume parser.
+                You are an AI resume parser.
 
-Extract structured information from the resume text below.
+                Extract structured information from the resume text below.
 
-Rules:
-- Infer name, email, phone, skills, and education if clearly present.
-- Do NOT leave fields empty when information is visible.
-- Only leave fields empty if information is truly missing.
-- Return ONLY valid minified JSON.
-- Do NOT include explanations, markdown, or extra text.
+                Rules:
+                - Infer name, email, phone, skills, and education if clearly present.
+                - Do NOT leave fields empty when information is visible.
+                - Only leave fields empty if information is truly missing.
+                - Return ONLY valid minified JSON.
+                - Do NOT include explanations, markdown, or extra text.
 
-JSON Schema:
-{
-  "profile": {
-    "name": "",
-    "year": "",
-    "department": "",
-    "availability": "low | medium | high"
-  },
+                JSON Schema:
+                {
+                  "profile": {
+                    "name": "",
+                    "year": "",
+                    "department": "",
+                    "availability": "low | medium | high"
+                  },
+                  "skills": {
+                    "programming_languages": [],
+                    "frameworks_libraries": [],
+                    "tools_platforms": [],
+                    "core_cs_concepts": [],
+                    "domain_skills": []
+                  },
+                  "experience_level": {
+                    "overall": "beginner | intermediate | advanced",
+                    "by_domain": {
+                      "web_dev": "beginner | intermediate | advanced",
+                      "ml_ai": "beginner | intermediate | advanced",
+                      "systems": "beginner | intermediate | advanced",
+                      "security": "beginner | intermediate | advanced"
+                    }
+                  },
+                  "projects": [
+                    {
+                      "title": "",
+                      "description": "",
+                      "technologies": [],
+                      "domain": "",
+                      "role": "",
+                      "completion_status": "completed | ongoing"
+                    }
+                  ],
+                  "interests": {
+                    "technical": [],
+                    "problem_domains": [],
+                    "learning_goals": []
+                  },
+                  "open_source": {
+                    "experience": "none | beginner | active | maintainer",
+                    "technologies": [],
+                    "contributions": 0
+                  },
+                  "achievements": {
+                    "hackathons": [],
+                    "certifications": [],
+                    "awards": []
+                  },
+                  "reputation_signals": {
+                    "completed_projects": 0,
+                    "average_rating": 0.0,
+                    "peer_endorsements": 0
+                  }
+                }
 
-  "skills": {
-    "programming_languages": [],
-    "frameworks_libraries": [],
-    "tools_platforms": [],
-    "core_cs_concepts": [],
-    "domain_skills": []
-  },
+                Resume Text:
+                \\"\\"\\"  %s  \\"\\"\\"
+                """.formatted(resumeText);
 
-  "experience_level": {
-    "overall": "beginner | intermediate | advanced",
-    "by_domain": {
-      "web_dev": "beginner | intermediate | advanced",
-      "ml_ai": "beginner | intermediate | advanced",
-      "systems": "beginner | intermediate | advanced",
-      "security": "beginner | intermediate | advanced"
-    }
-  },
-
-  "projects": [
-    {
-      "title": "",
-      "description": "",
-      "technologies": [],
-      "domain": "",
-      "role": "",
-      "completion_status": "completed | ongoing"
-    }
-  ],
-
-  "interests": {
-    "technical": [],
-    "problem_domains": [],
-    "learning_goals": []
-  },
-
-  "open_source": {
-    "experience": "none | beginner | active | maintainer",
-    "technologies": [],
-    "contributions": 0
-  },
-
-  "achievements": {
-    "hackathons": [],
-    "certifications": [],
-    "awards": []
-  },
-
-  "reputation_signals": {
-    "completed_projects": 0,
-    "average_rating": 0.0,
-    "peer_endorsements": 0
-  }
-}
-
-Resume Text:
-\"\"\"%s\"\"\"
-""".formatted(resumeText);
-
-        // ✅ Proper escaping (VERY IMPORTANT)
+        // Proper escaping for the JSON request body
         String escapedPrompt = prompt
                 .replace("\\", "\\\\")
                 .replace("\"", "\\\"")
                 .replace("\n", "\\n");
 
         String body = """
-        {
-          "contents": [
-            {
-              "parts": [
-                { "text": "%s" }
-              ]
-            }
-          ]
-        }
-        """.formatted(escapedPrompt);
+                {
+                  "contents": [
+                    {
+                      "parts": [
+                        { "text": "%s" }
+                      ]
+                    }
+                  ]
+                }
+                """.formatted(escapedPrompt);
 
         HttpEntity<String> request = new HttpEntity<>(body, headers);
 
         try {
-            ResponseEntity<String> response =
-                    restTemplate.postForEntity(
-                            String.format(GEMMA_URL, apiKey),
-                            request,
-                            String.class
-                    );
+            ResponseEntity<String> response = restTemplate.postForEntity(
+                    String.format(GEMMA_URL, apiKey), request, String.class);
 
             String result = extractGeminiReply(response.getBody());
 
-            // ✅ Validate JSON before returning
-            new ObjectMapper().readTree(result);
-
+            // Validate JSON before returning
+            mapper.readTree(result);
             return result;
 
         } catch (Exception e) {
-            e.printStackTrace();
-            // IMPORTANT: return a valid JSON fallback instead of a plain error string
+            log.error("Gemini resume conversion failed", e);
             return "{}";
         }
     }
 
-    private String extractGeminiReply(String responseBody) {
-        try {
-            ObjectMapper mapper = new ObjectMapper();
-            JsonNode root = mapper.readTree(responseBody);
+    /* ------------------------------------------------------------------ */
+    /* Save / Update profile */
+    /* ------------------------------------------------------------------ */
 
-            String text = root
-                    .path("candidates")
-                    .get(0)
-                    .path("content")
-                    .path("parts")
-                    .get(0)
-                    .path("text")
-                    .asText();
-
-            // FIX: Clean markdown code blocks from Gemini response
-            if (text.startsWith("```json")) {
-                text = text.substring(7, text.length() - 3);
-            } else if (text.startsWith("```")) {
-                text = text.substring(3, text.length() - 3);
-            }
-
-            return text.trim();
-
-        } catch (Exception e) {
-            throw new RuntimeException("Error parsing Gemini response", e);
-        }
-    }
-
-
-    // Updated: save parsed JSON and profile fields for a specific email (used during registration and uploads)
     public JsonData saveJsonForEmail(String json,
-                                    String email,
-                                    String providedName,
-                                    String providedYear,
-                                    String providedDepartment,
-                                    String providedInstitution,
-                                    String providedAvailability,
-                                    byte[] resumePdf) {
+            String email,
+            String providedName,
+            String providedYear,
+            String providedDepartment,
+            String providedInstitution,
+            String providedAvailability,
+            byte[] resumePdf) {
 
-        // Use provided email (no SecurityContext required)
         if (email == null || email.isBlank()) {
             throw new RuntimeException("Email required to save profile");
         }
 
-        // Validate incoming JSON; if invalid, replace with empty JSON object "{}"
-        String validJson = "{}";
-        if (json != null) {
-            try {
-                // attempt to parse; if succeeds, keep original string
-                new ObjectMapper().readTree(json);
-                validJson = json;
-            } catch (Exception e) {
-                e.printStackTrace();
-                // fallback to empty JSON to avoid DB jsonb insertion errors
-                validJson = "{}";
-            }
-        }
+        String validJson = validateJson(json);
 
         JsonData profile = jsonDataRepository.findByEmail(email)
                 .orElse(new JsonData());
 
         profile.setEmail(email);
-        // persist only validated JSON
         profile.setProfileJson(validJson);
         profile.setResumePdf(resumePdf);
         profile.setCreatedAt(Instant.now().toString());
 
-        if (providedName != null && !providedName.isBlank()) {
-            profile.setName(providedName);
-        }
-        if (providedYear != null && !providedYear.isBlank()) {
-            profile.setYear(providedYear);
-        }
-        if (providedDepartment != null && !providedDepartment.isBlank()) {
-            profile.setDepartment(providedDepartment);
-        }
-        if (providedInstitution != null && !providedInstitution.isBlank()) {
-            profile.setInstitution(providedInstitution);
-        }
-        if (providedAvailability != null && !providedAvailability.isBlank()) {
-            profile.setAvailability(providedAvailability);
-        }
+        setIfPresent(providedName, profile::setName);
+        setIfPresent(providedYear, profile::setYear);
+        setIfPresent(providedDepartment, profile::setDepartment);
+        setIfPresent(providedInstitution, profile::setInstitution);
+        setIfPresent(providedAvailability, profile::setAvailability);
 
-        // For any missing fields, try to extract from validated parsed JSON
-        try {
-            ObjectMapper mapper = new ObjectMapper();
-            JsonNode root = mapper.readTree(validJson);
-            JsonNode profileNode = root.path("profile");
-            if (!profileNode.isMissingNode()) {
-                if ((profile.getName() == null || profile.getName().isBlank())
-                        && profileNode.hasNonNull("name")) {
-                    profile.setName(profileNode.get("name").asText());
-                }
-                if ((profile.getYear() == null || profile.getYear().isBlank())
-                        && profileNode.hasNonNull("year")) {
-                    profile.setYear(profileNode.get("year").asText());
-                }
-                if ((profile.getDepartment() == null || profile.getDepartment().isBlank())
-                        && profileNode.hasNonNull("department")) {
-                    profile.setDepartment(profileNode.get("department").asText());
-                }
-                if ((profile.getInstitution() == null || profile.getInstitution().isBlank())
-                        && profileNode.hasNonNull("institution")) {
-                    profile.setInstitution(profileNode.get("institution").asText());
-                }
-                if ((profile.getAvailability() == null || profile.getAvailability().isBlank())
-                        && profileNode.hasNonNull("availability")) {
-                    profile.setAvailability(profileNode.get("availability").asText());
-                }
-            }
-        } catch (Exception e) {
-            // already validated; this block is best-effort — ignore on failure
-            e.printStackTrace();
-        }
+        fillMissingFromJson(profile, validJson);
 
         return jsonDataRepository.save(profile);
     }
 
-    // NEW: Update only resume-related fields for an existing profile
     public JsonData updateResumeForEmail(String json, String email, byte[] resumePdf) {
         if (email == null || email.isBlank()) {
             throw new RuntimeException("Email required to update profile");
         }
 
         JsonData profile = jsonDataRepository.findByEmail(email)
-                .orElseThrow(() -> new ProfileNotFoundException(0L)); // Throw if profile doesn't exist
+                .orElseThrow(() -> new ProfileNotFoundException(
+                        "Profile not found for email: " + email));
 
-        // Validate incoming JSON; if invalid, replace with empty JSON object "{}"
-        String validJson = "{}";
-        if (json != null) {
-            try {
-                new ObjectMapper().readTree(json);
-                validJson = json;
-            } catch (Exception e) {
-                e.printStackTrace();
-                validJson = "{}";
-            }
-        }
+        String validJson = validateJson(json);
 
-        // Only update resume-related fields
         profile.setProfileJson(validJson);
         if (resumePdf != null) {
             profile.setResumePdf(resumePdf);
         }
-        profile.setCreatedAt(Instant.now().toString()); // Update timestamp
+        profile.setCreatedAt(Instant.now().toString());
 
         return jsonDataRepository.save(profile);
     }
 
-    // New helper: fetch profile by email (used after login)
+    /* ------------------------------------------------------------------ */
+    /* Profile lookups */
+    /* ------------------------------------------------------------------ */
+
     public JsonData getProfileByEmail(String email) {
-        if (email == null) return null;
-        Optional<JsonData> opt = jsonDataRepository.findByEmail(email);
-        return opt.orElse(null);
+        if (email == null)
+            return null;
+        return jsonDataRepository.findByEmail(email).orElse(null);
     }
 
-
-    // New helper: get profile for currently authenticated user
     public JsonData getProfileForCurrentUser() {
         var auth = SecurityContextHolder.getContext().getAuthentication();
         if (auth == null || auth.getName() == null) {
             throw new RuntimeException("User not authenticated — email is null");
         }
-        String email = auth.getName();
-        return jsonDataRepository.findByEmail(email)
-                .orElseThrow(() -> new ProfileNotFoundException(-1L));
+        return jsonDataRepository.findByEmail(auth.getName())
+                .orElseThrow(() -> new ProfileNotFoundException(
+                        "Profile not found for current user"));
     }
 
-
-
-    // New: send parsed resume JSON (best-effort) to Django ML resume endpoint
-    public void sendResumeJson(JsonData profile) {
-        if (profile == null) {
-            return;
-        }
-        String resumeJsonStr = profile.getProfileJson();
-        if (resumeJsonStr == null || resumeJsonStr.isBlank()) {
-            return;
-        }
-
-        try {
-            ObjectMapper mapper = new ObjectMapper();
-            // parse profile JSON string to JsonNode so we can embed as an object
-            JsonNode parsedJsonNode = mapper.readTree(resumeJsonStr);
-
-            // Build payload: include resume_id when we have a DB id
-            Map<String, Object> payload;
-            if (profile.getId() != null) {
-                payload = Map.of(
-                        "resume_id", profile.getId(),
-                        "resume_json", parsedJsonNode
-                );
-            } else {
-                payload = Map.of(
-                        "parsed_json", parsedJsonNode
-                );
-            }
-
-            String payloadStr = mapper.writeValueAsString(payload);
-
-            HttpHeaders headers = new HttpHeaders();
-            headers.setContentType(MediaType.APPLICATION_JSON);
-            HttpEntity<String> request = new HttpEntity<>(payloadStr, headers);
-            RestTemplate restTemplate = new RestTemplate();
-
-            ResponseEntity<String> response = restTemplate.postForEntity(
-                    "http://localhost:31000/api/resume/json/",
-                    request,
-                    String.class
-            );
-
-            if (!response.getStatusCode().is2xxSuccessful()) {
-                System.out.println("Failed to send resume JSON to Django ML service: "
-                        + response.getStatusCode() + " " + response.getBody());
-            }
-
-        } catch (Exception e) {
-            System.out.println("Failed to send resume JSON to Django ML service: " + e.getMessage());
-            // keep it best-effort — do not throw
-        }
-    }
-
-    // New: send project JSON to Django ML endpoint
-    // NOTE: this method no longer sends the owner's resume JSON.
-    public void sendProjectAndOwnerResume(ProjectData project) {
-        if (project == null) return;
-
-        ObjectMapper mapper = new ObjectMapper();
-        try {
-            // Prepare required_skills array from comma-separated string
-            List<String> requiredSkillsList = List.of();
-            if (project.getRequiredSkills() != null && !project.getRequiredSkills().isBlank()) {
-                requiredSkillsList = Arrays.stream(project.getRequiredSkills().split(","))
-                        .map(String::trim)
-                        .filter(s -> !s.isEmpty())
-                        .collect(Collectors.toList());
-            }
-
-            // domains array (use domain CSV if present)
-            List<String> domains = List.of();
-            if (project.getDomain() != null && !project.getDomain().isBlank()) {
-                domains = Arrays.stream(project.getDomain().split(","))
-                        .map(String::trim)
-                        .filter(s -> !s.isEmpty())
-                        .collect(Collectors.toList());
-            }
-
-            // preferred_technologies array (from CSV)
-            List<String> preferredTech = List.of();
-            if (project.getPreferredTechnologies() != null && !project.getPreferredTechnologies().isBlank()) {
-                preferredTech = Arrays.stream(project.getPreferredTechnologies().split(","))
-                        .map(String::trim)
-                        .filter(s -> !s.isEmpty())
-                        .collect(Collectors.toList());
-            }
-
-            // Build parsed_json object following the structure in your curl example
-            Map<String, Object> parsedJson = Map.of(
-                    "title", project.getTitle(),
-                    "description", project.getDescription() == null ? "" : project.getDescription(),
-                    "required_skills", requiredSkillsList,
-                    "preferred_technologies", preferredTech,
-                    "domains", domains,
-                    "project_type", project.getType(),
-                    "team_size", 0, // optional; set 0 if unknown
-                    "created_at", project.getCreatedAt()
-            );
-
-            // IMPORTANT: send numeric project_id (Long) — Django expects an integer
-            Map<String, Object> payload = Map.of(
-                    "project_id", project.getId(),
-                    "parsed_json", parsedJson
-            );
-
-            String projectJson = mapper.writeValueAsString(payload);
-
-            HttpHeaders headers = new HttpHeaders();
-            headers.setContentType(MediaType.APPLICATION_JSON);
-            HttpEntity<String> request = new HttpEntity<>(projectJson, headers);
-            RestTemplate restTemplate = new RestTemplate();
-
-            ResponseEntity<String> response = restTemplate.postForEntity(
-                    "http://localhost:31001/api/project/embed/",
-                    request,
-                    String.class
-            );
-            System.out.println(payload);
-            System.out.println("Sent project JSON to Django ML service, response: "
-                    + response.getStatusCode() + " - " + response.getBody());
-
-            if (!response.getStatusCode().is2xxSuccessful()) {
-                System.out.println("Failed to send project JSON to Django ML service: "
-                        + response.getStatusCode() + " - " + response.getBody());
-            }
-
-        } catch (Exception e) {
-            System.out.println("Failed to send project JSON to Django ML service: " + e.getMessage());
-        }
-
-        // Removed: previously the owner's resume JSON was looked up and sent here.
-    }
-
-    // New helper: fetch profile by id
     public JsonData getProfileById(Long id) {
-        if (id == null) return null;
-        Optional<JsonData> opt = jsonDataRepository.findById(id);
-        return opt.orElse(null);
+        if (id == null)
+            return null;
+        return jsonDataRepository.findById(id).orElse(null);
     }
 
-    // New helper: fetch profile by id and return top-level profile map (used by controller)
     public Map<String, Object> getUserProfileById(Long id) {
-        if (id == null) return null;
-        Optional<JsonData> opt = jsonDataRepository.findById(id);
-        if (opt.isEmpty()) return null;
-        JsonData p = opt.get();
+        if (id == null)
+            return null;
 
+        Optional<JsonData> opt = jsonDataRepository.findById(id);
+        if (opt.isEmpty())
+            return null;
+
+        JsonData p = opt.get();
         Map<String, Object> profile = new HashMap<>();
         profile.put("email", p.getEmail());
         profile.put("name", p.getName());
@@ -488,12 +254,166 @@ Resume Text:
         profile.put("department", p.getDepartment());
         profile.put("institution", p.getInstitution());
         profile.put("availability", p.getAvailability());
-        // include parsed JSON resume under the same key used elsewhere
         profile.put("Resume", p.getProfileJson());
-        // NEW: include PDF download URL instead of base64
         if (p.getResumePdf() != null) {
             profile.put("resumePdfUrl", "/api/resume/download/" + p.getId());
         }
         return profile;
+    }
+
+    /* ------------------------------------------------------------------ */
+    /* Django ML integration (best-effort) */
+    /* ------------------------------------------------------------------ */
+
+    public void sendResumeJson(JsonData profile) {
+        if (profile == null)
+            return;
+
+        String resumeJsonStr = profile.getProfileJson();
+        if (resumeJsonStr == null || resumeJsonStr.isBlank())
+            return;
+
+        try {
+            JsonNode parsedJsonNode = mapper.readTree(resumeJsonStr);
+
+            Map<String, Object> payload = profile.getId() != null
+                    ? Map.of("resume_id", profile.getId(), "resume_json", parsedJsonNode)
+                    : Map.of("parsed_json", parsedJsonNode);
+
+            postToDjango("http://localhost:31000/api/resume/json/", payload);
+
+        } catch (Exception e) {
+            log.warn("Failed to send resume JSON to Django ML service: {}", e.getMessage());
+        }
+    }
+
+    public void sendProjectAndOwnerResume(ProjectData project) {
+        if (project == null)
+            return;
+
+        try {
+            List<String> requiredSkillsList = csvToList(project.getRequiredSkills());
+            List<String> domains = csvToList(project.getDomain());
+            List<String> preferredTech = csvToList(project.getPreferredTechnologies());
+
+            Map<String, Object> parsedJson = Map.of(
+                    "title", project.getTitle(),
+                    "description", project.getDescription() == null ? "" : project.getDescription(),
+                    "required_skills", requiredSkillsList,
+                    "preferred_technologies", preferredTech,
+                    "domains", domains,
+                    "project_type", project.getType(),
+                    "team_size", 0,
+                    "created_at", project.getCreatedAt());
+
+            Map<String, Object> payload = Map.of(
+                    "project_id", project.getId(),
+                    "parsed_json", parsedJson);
+
+            postToDjango("http://localhost:31001/api/project/embed/", payload);
+
+        } catch (Exception e) {
+            log.warn("Failed to send project JSON to Django ML service: {}", e.getMessage());
+        }
+    }
+
+    /* ================================================================== */
+    /* Private helpers */
+    /* ================================================================== */
+
+    private String extractGeminiReply(String responseBody) {
+        try {
+            JsonNode root = mapper.readTree(responseBody);
+
+            String text = root
+                    .path("candidates").get(0)
+                    .path("content")
+                    .path("parts").get(0)
+                    .path("text")
+                    .asText();
+
+            if (text.startsWith("```json")) {
+                text = text.substring(7, text.length() - 3);
+            } else if (text.startsWith("```")) {
+                text = text.substring(3, text.length() - 3);
+            }
+            return text.trim();
+
+        } catch (Exception e) {
+            throw new RuntimeException("Error parsing Gemini response", e);
+        }
+    }
+
+    private String validateJson(String json) {
+        if (json == null)
+            return "{}";
+        try {
+            mapper.readTree(json);
+            return json;
+        } catch (Exception e) {
+            log.warn("Invalid JSON received; falling back to empty object: {}", e.getMessage());
+            return "{}";
+        }
+    }
+
+    private void fillMissingFromJson(JsonData profile, String json) {
+        try {
+            JsonNode root = mapper.readTree(json);
+            JsonNode profileNode = root.path("profile");
+            if (profileNode.isMissingNode())
+                return;
+
+            if (isBlank(profile.getName()) && profileNode.hasNonNull("name")) {
+                profile.setName(profileNode.get("name").asText());
+            }
+            if (isBlank(profile.getYear()) && profileNode.hasNonNull("year")) {
+                profile.setYear(profileNode.get("year").asText());
+            }
+            if (isBlank(profile.getDepartment()) && profileNode.hasNonNull("department")) {
+                profile.setDepartment(profileNode.get("department").asText());
+            }
+            if (isBlank(profile.getInstitution()) && profileNode.hasNonNull("institution")) {
+                profile.setInstitution(profileNode.get("institution").asText());
+            }
+            if (isBlank(profile.getAvailability()) && profileNode.hasNonNull("availability")) {
+                profile.setAvailability(profileNode.get("availability").asText());
+            }
+        } catch (Exception e) {
+            log.debug("Best-effort JSON profile extraction failed: {}", e.getMessage());
+        }
+    }
+
+    private void postToDjango(String url, Map<String, Object> payload) throws Exception {
+        String payloadStr = mapper.writeValueAsString(payload);
+
+        HttpHeaders headers = new HttpHeaders();
+        headers.setContentType(MediaType.APPLICATION_JSON);
+        HttpEntity<String> request = new HttpEntity<>(payloadStr, headers);
+
+        RestTemplate restTemplate = new RestTemplate();
+        ResponseEntity<String> response = restTemplate.postForEntity(url, request, String.class);
+
+        if (!response.getStatusCode().is2xxSuccessful()) {
+            log.warn("Django ML service returned {}: {}", response.getStatusCode(), response.getBody());
+        }
+    }
+
+    private List<String> csvToList(String csv) {
+        if (csv == null || csv.isBlank())
+            return List.of();
+        return Arrays.stream(csv.split(","))
+                .map(String::trim)
+                .filter(s -> !s.isEmpty())
+                .collect(Collectors.toList());
+    }
+
+    private void setIfPresent(String value, java.util.function.Consumer<String> setter) {
+        if (value != null && !value.isBlank()) {
+            setter.accept(value);
+        }
+    }
+
+    private boolean isBlank(String s) {
+        return s == null || s.isBlank();
     }
 }
